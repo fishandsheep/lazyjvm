@@ -2,11 +2,37 @@ package dev.lazyjvm.domain;
 
 import java.util.Objects;
 
-public record MetricKey(String id, String label, String unit) {
-    public MetricKey {
-        id = Objects.requireNonNull(id);
-        label = Objects.requireNonNull(label);
-        unit = Objects.requireNonNullElse(unit, "");
+public final class MetricKey {
+    private final String id;
+    private final String label;
+    private final String unit;
+
+    public MetricKey(String id, String label, String unit) {
+        this.id = Objects.requireNonNull(id);
+        this.label = Objects.requireNonNull(label);
+        this.unit = unit == null ? "" : unit;
+    }
+
+    public String id() { return id; }
+    public String label() { return label; }
+    public String unit() { return unit; }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof MetricKey)) return false;
+        MetricKey that = (MetricKey) other;
+        return id.equals(that.id) && label.equals(that.label) && unit.equals(that.unit);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, label, unit);
+    }
+
+    @Override
+    public String toString() {
+        return "MetricKey[id=" + id + ", label=" + label + ", unit=" + unit + "]";
     }
 
     public static final MetricKey PROCESS_CPU = new MetricKey("process.cpu", "Process CPU", "%");

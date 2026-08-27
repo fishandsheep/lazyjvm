@@ -35,14 +35,18 @@ import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -51,6 +55,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -101,7 +106,7 @@ public final class TuiApplication implements AutoCloseable {
     private volatile Connection connection;
     private volatile String status = "Discovering local JVMs";
     private volatile String error = "";
-    private List<TargetJvm> targets = List.of();
+    private List<TargetJvm> targets = Collections.emptyList();
     private int selectedTarget;
     private int selectedJfr;
     private Page page = Page.OVERVIEW;
@@ -116,7 +121,7 @@ public final class TuiApplication implements AutoCloseable {
     private String commandFilter = "";
     private String searchBefore = "";
     private DiagnosticCommand pendingCommand;
-    private List<String> pendingArguments = List.of();
+    private List<String> pendingArguments = Collections.emptyList();
     private FocusArea focusArea = FocusArea.MAIN;
     private int selectedExecution = -1;
     private int outputScroll;
@@ -207,9 +212,9 @@ public final class TuiApplication implements AutoCloseable {
                 connection = new Connection(session.target(), collector, jcmd, commands);
                 mode = Mode.MONITOR;
                 String jcmdWarning = jcmd.compatibilityWarning(session.target());
-                status = jcmdWarning.isBlank() ? "Connected via local JMX" : "Connected · jcmd version warning";
+                status = jcmdWarning.trim().isEmpty() ? "Connected via local JMX" : "Connected · jcmd version warning";
                 event("Connected to " + session.target().displayName());
-                if (!jcmdWarning.isBlank()) event(jcmdWarning);
+                if (!jcmdWarning.trim().isEmpty()) event(jcmdWarning);
                 scheduleSampling();
             } catch (Exception exception) {
                 mode = Mode.ERROR;
@@ -224,8 +229,10 @@ public final class TuiApplication implements AutoCloseable {
         JcmdCatalog parser = new JcmdCatalog();
         if (!jcmd.available(target)) return parser.fallback();
         try {
-            DiagnosticCommand helpCommand = new DiagnosticCommand("help", "List target diagnostic commands", CommandImpact.LOW, List.of());
-            CommandResult result = jcmd.execute(target, new CommandRequest(target.pid(), helpCommand, List.of(), Duration.ofSeconds(8)));
+            DiagnosticCommand helpCommand = new DiagnosticCommand("help", "List target diagnostic commands", CommandImpact.LOW,
+                    Collections.<String>emptyList());
+            CommandResult result = jcmd.execute(target, new CommandRequest(target.pid(), helpCommand,
+                    Collections.<String>emptyList(), Duration.ofSeconds(8)));
             List<DiagnosticCommand> parsed = parser.parse(result.output());
             return parsed.isEmpty() ? parser.fallback() : parsed;
         } catch (Exception exception) {
@@ -253,7 +260,7 @@ public final class TuiApplication implements AutoCloseable {
         } catch (Exception exception) {
             status = "Sample missed · " + concise(exception);
             event(status);
-            if (ProcessHandle.of(active.target().pid()).map(ProcessHandle::isAlive).orElse(false) == false) {
+            if (!isTargetAlive(active.target().pid())) {
                 mode = Mode.ERROR;
                 error = "Target JVM exited. Press Esc to return to process discovery.";
             }
@@ -363,40 +370,46 @@ public final class TuiApplication implements AutoCloseable {
         UiLayout.Hit hit = layout.hitTest(mouse.x(), mouse.y());
         if (hit.kind() != UiLayout.HitKind.COMMAND_ROW) commandClick.reset();
         switch (hit.kind()) {
-            case WORKSPACE -> {
+            case WORKSPACE:
                 focusArea = FocusArea.WORKSPACE;
                 if (hit.index() >= 0 && hit.index() < Page.values().length) page = Page.values()[hit.index()];
-            }
-            case OUTPUT_SELECTOR -> {
+                break;
+            case OUTPUT_SELECTOR:
                 focusArea = FocusArea.COMMAND_OUTPUT;
                 outputDropdown = !outputDropdown;
-            }
-            case OUTPUT_COPY -> {
+                break;
+            case OUTPUT_COPY:
                 focusArea = FocusArea.COMMAND_OUTPUT;
                 copyCurrentOutput();
-            }
-            case OUTPUT_ITEM -> {
+                break;
+            case OUTPUT_ITEM:
                 focusArea = FocusArea.COMMAND_OUTPUT;
                 selectedExecution = hit.index();
                 outputScroll = 0;
                 outputDropdown = false;
-            }
-            case COMMAND_GROUP -> {
+                break;
+            case COMMAND_GROUP:
                 focusArea = FocusArea.MAIN;
                 selectedCommandRow = hit.index();
                 toggleSelectedCommandGroup();
-            }
-            case COMMAND_ROW -> {
+                break;
+            case COMMAND_ROW:
                 focusArea = FocusArea.MAIN;
                 selectedCommandRow = hit.index();
                 if (commandClick.register(hit.index(), System.nanoTime())) {
                     CommandTreeItem item = selectedCommandItem();
                     if (item != null && !item.groupHeader()) requestCommand(item.command());
                 }
-            }
-            case COMMAND_OUTPUT -> focusArea = FocusArea.COMMAND_OUTPUT;
-            case COMMAND_LIST, MAIN -> focusArea = FocusArea.MAIN;
-            case NONE -> { }
+                break;
+            case COMMAND_OUTPUT:
+                focusArea = FocusArea.COMMAND_OUTPUT;
+                break;
+            case COMMAND_LIST:
+            case MAIN:
+                focusArea = FocusArea.MAIN;
+                break;
+            case NONE:
+                break;
         }
     }
 
@@ -556,9 +569,7 @@ public final class TuiApplication implements AutoCloseable {
                 status = command.name() + " · " + UiText.impact(command.impact(), uiLanguage)
                         + (result.timedOut()
                         ? " · " + ui("超时", "TIMEOUT")
-                        : result.succeeded()
-                        ? " · " + result.duration().toMillis() + " ms"
-                        : " · " + ui("退出码 ", "exit ") + result.exitCode());
+                        : " · " + result.duration().toMillis() + " ms");
                 event(status);
             } catch (Exception exception) {
                 CommandResult failure = new CommandResult(-1, exception.toString(), false, false, Duration.ZERO);
@@ -591,10 +602,10 @@ public final class TuiApplication implements AutoCloseable {
         CompletableFuture.runAsync(() -> {
             try {
                 Instant now = Instant.now();
-                Path output = Path.of("lazyjvm-report-" + active.target().pid() + "-" + FILE_TIME.format(now) + ".zip");
+                Path output = Paths.get("lazyjvm-report-" + active.target().pid() + "-" + FILE_TIME.format(now) + ".zip");
                 SnapshotManifest manifest = new SnapshotManifest("0.1.0-SNAPSHOT", active.target(), now,
-                        List.of("Attach API", "JMX MXBeans", "jcmd"), List.of(),
-                        List.of("Environment variables and system properties are not exported by default"));
+                        Arrays.asList("Attach API", "JMX MXBeans", "jcmd"), Collections.<String>emptyList(),
+                        Collections.singletonList("Environment variables and system properties are not exported by default"));
                 Path written = new SnapshotExporter().export(output, manifest, history.snapshot(), new LinkedHashMap<>(commandOutputs));
                 status = "Report written · " + written;
                 event(status);
@@ -613,7 +624,7 @@ public final class TuiApplication implements AutoCloseable {
             }
             prompt = Prompt.NONE;
             pendingCommand = null;
-            pendingArguments = List.of();
+            pendingArguments = Collections.emptyList();
             return;
         }
         if (key == 127 || key == 8) {
@@ -624,10 +635,10 @@ public final class TuiApplication implements AutoCloseable {
         if (key == '\n' || key == '\r') {
             if (prompt == Prompt.SEARCH) {
                 if (mode == Mode.PICKER) {
-                    pickerFilter = promptText.strip();
+                    pickerFilter = promptText.trim();
                     selectedTarget = 0;
                 } else {
-                    commandFilter = promptText.strip();
+                    commandFilter = promptText.trim();
                     selectedCommandRow = 0;
                     commandScroll = 0;
                 }
@@ -639,12 +650,12 @@ public final class TuiApplication implements AutoCloseable {
                     DiagnosticCommand command = pendingCommand;
                     List<String> arguments = pendingArguments;
                     pendingCommand = null;
-                    pendingArguments = List.of();
+                    pendingArguments = Collections.emptyList();
                     executeCommand(command, arguments);
                 } else {
                     status = "Confirmation rejected · target and command did not match";
                     pendingCommand = null;
-                    pendingArguments = List.of();
+                    pendingArguments = Collections.emptyList();
                 }
             }
             prompt = Prompt.NONE;
@@ -702,21 +713,29 @@ public final class TuiApplication implements AutoCloseable {
         application.asciiMode = ascii;
         application.uiLanguage = language.forTerminal(ascii);
         Instant now = Instant.parse("2026-08-24T00:00:00Z");
-        Map<MetricKey, MetricPoint> metrics = Map.ofEntries(
-                Map.entry(MetricKey.HEAP_USED, new MetricPoint(now, MetricKey.HEAP_USED, 256 * 1024 * 1024, MetricQuality.EXACT, "JMX")),
-                Map.entry(MetricKey.HEAP_COMMITTED, new MetricPoint(now, MetricKey.HEAP_COMMITTED, 512 * 1024 * 1024, MetricQuality.EXACT, "JMX")),
-                Map.entry(MetricKey.HEAP_MAX, new MetricPoint(now, MetricKey.HEAP_MAX, 1024 * 1024 * 1024, MetricQuality.EXACT, "JMX")),
-                Map.entry(MetricKey.PROCESS_CPU, new MetricPoint(now, MetricKey.PROCESS_CPU, 12.5, MetricQuality.EXACT, "JMX")),
-                Map.entry(MetricKey.SYSTEM_CPU, new MetricPoint(now, MetricKey.SYSTEM_CPU, 37.0, MetricQuality.EXACT, "JMX")),
-                Map.entry(MetricKey.THREADS_LIVE, new MetricPoint(now, MetricKey.THREADS_LIVE, 18, MetricQuality.EXACT, "JMX")),
-                Map.entry(MetricKey.CLASSES_LOADED, new MetricPoint(now, MetricKey.CLASSES_LOADED, 2400, MetricQuality.EXACT, "JMX")),
-                Map.entry(MetricKey.UPTIME, new MetricPoint(now, MetricKey.UPTIME, 90_000, MetricQuality.EXACT, "JMX")));
+        Map<MetricKey, MetricPoint> metrics = new LinkedHashMap<>();
+        metrics.put(MetricKey.HEAP_USED, new MetricPoint(now, MetricKey.HEAP_USED,
+                256 * 1024 * 1024, MetricQuality.EXACT, "JMX"));
+        metrics.put(MetricKey.HEAP_COMMITTED, new MetricPoint(now, MetricKey.HEAP_COMMITTED,
+                512 * 1024 * 1024, MetricQuality.EXACT, "JMX"));
+        metrics.put(MetricKey.HEAP_MAX, new MetricPoint(now, MetricKey.HEAP_MAX,
+                1024 * 1024 * 1024, MetricQuality.EXACT, "JMX"));
+        metrics.put(MetricKey.PROCESS_CPU, new MetricPoint(now, MetricKey.PROCESS_CPU,
+                12.5, MetricQuality.EXACT, "JMX"));
+        metrics.put(MetricKey.SYSTEM_CPU, new MetricPoint(now, MetricKey.SYSTEM_CPU,
+                37.0, MetricQuality.EXACT, "JMX"));
+        metrics.put(MetricKey.THREADS_LIVE, new MetricPoint(now, MetricKey.THREADS_LIVE,
+                18, MetricQuality.EXACT, "JMX"));
+        metrics.put(MetricKey.CLASSES_LOADED, new MetricPoint(now, MetricKey.CLASSES_LOADED,
+                2400, MetricQuality.EXACT, "JMX"));
+        metrics.put(MetricKey.UPTIME, new MetricPoint(now, MetricKey.UPTIME,
+                90_000, MetricQuality.EXACT, "JMX"));
         MetricSnapshot sample = new MetricSnapshot(now, metrics,
-                List.of(new MemoryPoolSnapshot("G1 Eden Space", "heap", 64, 128, 256)),
-                List.of(new GcSnapshot("G1 Young Generation", 12, 48, "G1 Eden Space")),
-                new ThreadSnapshot(18, 12, 24, Map.of(Thread.State.RUNNABLE, 8, Thread.State.WAITING, 10), new long[0]),
+                Collections.singletonList(new MemoryPoolSnapshot("G1 Eden Space", "heap", 64, 128, 256)),
+                Collections.singletonList(new GcSnapshot("G1 Young Generation", 12, 48, "G1 Eden Space")),
+                new ThreadSnapshot(18, 12, 24, threadStateFixture(), new long[0]),
                 CapabilitySet.of(Capability.JMX, Capability.MEMORY_POOLS, Capability.GARBAGE_COLLECTION,
-                        Capability.THREADS, Capability.JFR), Duration.ofMillis(8), List.of());
+                        Capability.THREADS, Capability.JFR), Duration.ofMillis(8), Collections.<String>emptyList());
         application.mode = Mode.MONITOR;
         application.focusArea = FocusArea.MAIN;
         application.status = "Live · 8 ms sample";
@@ -728,6 +747,13 @@ public final class TuiApplication implements AutoCloseable {
         application.drawMonitor(canvas);
         application.drawFooter(canvas);
         return canvas.render(false);
+    }
+
+    private static Map<Thread.State, Integer> threadStateFixture() {
+        Map<Thread.State, Integer> states = new EnumMap<>(Thread.State.class);
+        states.put(Thread.State.RUNNABLE, 8);
+        states.put(Thread.State.WAITING, 10);
+        return states;
     }
 
     private void drawHeader(Canvas canvas) {
@@ -759,14 +785,14 @@ public final class TuiApplication implements AutoCloseable {
     private void drawPicker(Canvas canvas) {
         int y = 3;
         canvas.text(2, y, ui("本地 JVM", "Local JVMs"), Style.CYAN);
-        canvas.text(14, y, pickerFilter.isBlank() ? "" : ui("筛选：", "filter: ") + pickerFilter, Style.AMBER);
+        canvas.text(14, y, pickerFilter.trim().isEmpty() ? "" : ui("筛选：", "filter: ") + pickerFilter, Style.AMBER);
         y += 2;
         canvas.text(2, y, ui("  PID       启动时间  用户          主类 / 命令",
                 "  PID       START     USER          MAIN CLASS / COMMAND"), Style.MUTED);
         y++;
         List<TargetJvm> visible = visibleTargets();
         if (visible.isEmpty()) {
-            canvas.text(4, y + 2, pickerFilter.isBlank() ? ui("没有可连接的 JVM。", "No attachable JVMs found.")
+            canvas.text(4, y + 2, pickerFilter.trim().isEmpty() ? ui("没有可连接的 JVM。", "No attachable JVMs found.")
                     : ui("没有匹配筛选条件的 JVM。", "No JVM matches current filter."), Style.YELLOW);
             canvas.text(4, y + 4, ui("按 r 重试发现，按 / 修改筛选。", "Press r to retry discovery or / to change filter."), Style.MUTED);
             return;
@@ -838,12 +864,24 @@ public final class TuiApplication implements AutoCloseable {
             return;
         }
         switch (page) {
-            case OVERVIEW -> drawOverview(canvas, x, y, width, height, sample);
-            case MEMORY -> drawMemory(canvas, x, y, width, height, sample);
-            case THREADS -> drawThreads(canvas, x, y, width, height, sample);
-            case JFR -> drawJfr(canvas, x, y, width, height, sample);
-            case COMMANDS -> drawCommands(canvas, x, y, width, height);
-            case REPORTS -> drawReports(canvas, x, y, width, height);
+            case OVERVIEW:
+                drawOverview(canvas, x, y, width, height, sample);
+                break;
+            case MEMORY:
+                drawMemory(canvas, x, y, width, height, sample);
+                break;
+            case THREADS:
+                drawThreads(canvas, x, y, width, height, sample);
+                break;
+            case JFR:
+                drawJfr(canvas, x, y, width, height, sample);
+                break;
+            case COMMANDS:
+                drawCommands(canvas, x, y, width, height);
+                break;
+            case REPORTS:
+                drawReports(canvas, x, y, width, height);
+                break;
         }
     }
 
@@ -867,50 +905,50 @@ public final class TuiApplication implements AutoCloseable {
                     + Format.number(latestDelta(MetricKey.GC_TIME)) + " " + ui("ms/采样", "ms/sample"), Style.YELLOW);
             return;
         }
-        List<Instant> timestamps = history.snapshot().stream().map(MetricSnapshot::timestamp).toList();
-        List<Chart.Series> cpuSeries = List.of(
+        List<Instant> timestamps = history.snapshot().stream().map(MetricSnapshot::timestamp).collect(Collectors.toList());
+        List<Chart.Series> cpuSeries = Arrays.asList(
                 new Chart.Series(ui("进程", "Process"), series(MetricKey.PROCESS_CPU), Style.CYAN),
                 new Chart.Series(ui("系统", "System"), series(MetricKey.SYSTEM_CPU), Style.GREEN));
-        List<Chart.Series> heapSeries = List.of(
+        List<Chart.Series> heapSeries = Arrays.asList(
                 new Chart.Series(ui("已用", "Used"), series(MetricKey.HEAP_USED), Style.AMBER),
                 new Chart.Series(ui("已提交", "Committed"), series(MetricKey.HEAP_COMMITTED), Style.YELLOW),
                 new Chart.Series(ui("上限", "Max"), series(MetricKey.HEAP_MAX), Style.CYAN));
-        List<Chart.Series> threadSeries = List.of(
+        List<Chart.Series> threadSeries = Arrays.asList(
                 new Chart.Series(ui("活动", "Live"), series(MetricKey.THREADS_LIVE), Style.CYAN),
                 new Chart.Series(ui("峰值", "Peak"), series(MetricKey.THREADS_PEAK), Style.AMBER));
         List<Double> gcPause = deltas(MetricKey.GC_TIME);
-        List<Instant> deltaTimes = timestamps.size() <= 1 ? List.of() : timestamps.subList(1, timestamps.size());
-        List<Chart.Series> gcSeries = List.of(new Chart.Series(ui("暂停", "Pause"), gcPause, Style.AMBER));
+        List<Instant> deltaTimes = timestamps.size() <= 1 ? Collections.<Instant>emptyList() : timestamps.subList(1, timestamps.size());
+        List<Chart.Series> gcSeries = Collections.singletonList(new Chart.Series(ui("暂停", "Pause"), gcPause, Style.AMBER));
         int cellWidth = Math.max(20, (width - 6) / 2);
         int cellHeight = Math.max(6, (height - 8) / 2);
         boolean grid = width >= 64 && height >= 19;
         if (grid) {
             drawMetricChart(canvas, x + 2, y + 4, cellWidth, cellHeight,
                     ui("进程 CPU / 系统 CPU", "Process CPU / System CPU"), cpuSeries,
-                    List.of(MetricKey.PROCESS_CPU, MetricKey.SYSTEM_CPU), timestamps, 0, 100, "%");
+                    Arrays.asList(MetricKey.PROCESS_CPU, MetricKey.SYSTEM_CPU), timestamps, 0, 100, "%");
             drawMetricChart(canvas, x + 3 + cellWidth, y + 4, cellWidth, cellHeight,
                     ui("已用堆 / 已提交 / 上限", "Heap used / committed / max"), heapSeries,
-                    List.of(MetricKey.HEAP_USED, MetricKey.HEAP_COMMITTED, MetricKey.HEAP_MAX), timestamps, 0, finiteOr(heapMax, 1), "bytes");
+                    Arrays.asList(MetricKey.HEAP_USED, MetricKey.HEAP_COMMITTED, MetricKey.HEAP_MAX), timestamps, 0, finiteOr(heapMax, 1), "bytes");
             drawMetricChart(canvas, x + 2, y + 5 + cellHeight, cellWidth, cellHeight,
                     ui("活动线程 / 峰值", "Live / Peak threads"), threadSeries,
-                    List.of(MetricKey.THREADS_LIVE, MetricKey.THREADS_PEAK), timestamps, 0, finiteOr(maxValue(MetricKey.THREADS_PEAK), 1), "threads");
+                    Arrays.asList(MetricKey.THREADS_LIVE, MetricKey.THREADS_PEAK), timestamps, 0, finiteOr(maxValue(MetricKey.THREADS_PEAK), 1), "threads");
             drawMetricChart(canvas, x + 3 + cellWidth, y + 5 + cellHeight, cellWidth, cellHeight,
                     ui("每次采样 GC 暂停", "GC pause per sample"), gcSeries,
-                    List.of(MetricKey.GC_TIME), deltaTimes, 0, finiteOr(maxValue(gcPause), 1), "ms");
+                    Collections.singletonList(MetricKey.GC_TIME), deltaTimes, 0, finiteOr(maxValue(gcPause), 1), "ms");
         } else {
             int chartHeight = Math.max(5, (height - 8) / 4);
             drawMetricChart(canvas, x + 2, y + 4, width - 4, chartHeight,
                     ui("进程 CPU / 系统 CPU", "Process CPU / System CPU"), cpuSeries,
-                    List.of(MetricKey.PROCESS_CPU, MetricKey.SYSTEM_CPU), timestamps, 0, 100, "%");
+                    Arrays.asList(MetricKey.PROCESS_CPU, MetricKey.SYSTEM_CPU), timestamps, 0, 100, "%");
             drawMetricChart(canvas, x + 2, y + 4 + chartHeight, width - 4, chartHeight,
                     ui("已用堆 / 已提交 / 上限", "Heap used / committed / max"), heapSeries,
-                    List.of(MetricKey.HEAP_USED, MetricKey.HEAP_COMMITTED, MetricKey.HEAP_MAX), timestamps, 0, finiteOr(heapMax, 1), "bytes");
+                    Arrays.asList(MetricKey.HEAP_USED, MetricKey.HEAP_COMMITTED, MetricKey.HEAP_MAX), timestamps, 0, finiteOr(heapMax, 1), "bytes");
             drawMetricChart(canvas, x + 2, y + 4 + chartHeight * 2, width - 4, chartHeight,
                     ui("活动线程 / 峰值", "Live / Peak threads"), threadSeries,
-                    List.of(MetricKey.THREADS_LIVE, MetricKey.THREADS_PEAK), timestamps, 0, finiteOr(maxValue(MetricKey.THREADS_PEAK), 1), "threads");
+                    Arrays.asList(MetricKey.THREADS_LIVE, MetricKey.THREADS_PEAK), timestamps, 0, finiteOr(maxValue(MetricKey.THREADS_PEAK), 1), "threads");
             drawMetricChart(canvas, x + 2, y + 4 + chartHeight * 3, width - 4, chartHeight,
                     ui("每次采样 GC 暂停", "GC pause per sample"), gcSeries,
-                    List.of(MetricKey.GC_TIME), deltaTimes, 0, finiteOr(maxValue(gcPause), 1), "ms");
+                    Collections.singletonList(MetricKey.GC_TIME), deltaTimes, 0, finiteOr(maxValue(gcPause), 1), "ms");
         }
     }
 
@@ -1098,7 +1136,7 @@ public final class TuiApplication implements AutoCloseable {
         Style outputBorder = focusArea == FocusArea.COMMAND_OUTPUT ? Style.GREEN : Style.PANEL;
         canvas.box(listRect.x(), listRect.y(), listRect.width(), listRect.height(), ui("命令树", "Command tree"), listBorder, asciiMode);
         canvas.box(outputRect.x(), outputRect.y(), outputRect.width(), outputRect.height(), ui("命令输出", "Command Output"), outputBorder, asciiMode);
-        String filterLabel = commandFilter.isBlank() ? "" : ui(" · 筛选：", " · filter: ") + commandFilter
+        String filterLabel = commandFilter.trim().isEmpty() ? "" : ui(" · 筛选：", " · filter: ") + commandFilter
                 + ui(" · c 清除", " · c clears");
         canvas.text(listRect.x() + 2, listRect.y() + 1,
                 Canvas.crop(ui("Enter/x：组折叠/执行，双击命令执行", "Enter/x: fold/run, double-click command") + filterLabel,
@@ -1221,7 +1259,7 @@ public final class TuiApplication implements AutoCloseable {
                 "heap dumps, environment variables, complete system properties"), Style.NORMAL);
         canvas.text(x + 2, y + 11, ui("最近活动", "Recent activity"), Style.MUTED);
         List<String> events;
-        synchronized (eventLog) { events = List.copyOf(eventLog); }
+        synchronized (eventLog) { events = Collections.unmodifiableList(new ArrayList<>(eventLog)); }
         int visible = Math.max(1, height - 14);
         reportScroll = reportFollowTail ? ScrollModel.maximum(events.size(), visible)
                 : ScrollModel.clamp(reportScroll, events.size(), visible);
@@ -1299,9 +1337,6 @@ public final class TuiApplication implements AutoCloseable {
         if (status.startsWith("Confirmation blocked")) return "确认已阻止：请调整终端以显示完整调用";
         if (status.startsWith("Confirmation rejected")) return "确认被拒绝：目标和命令不匹配";
         if (status.contains(" already running")) return status.replace(" already running", " 已在执行");
-        if (status.contains(" completed in ")) return status.replace(" completed in ", " 已完成，用时 ");
-        if (status.contains(" failed (exit ")) return status.replace(" failed (exit ", " 失败（退出码 ").replace(")", "）");
-        if (status.contains(" failed · ")) return status.replace(" failed · ", " 失败：");
         return OutputNormalizer.clean(status);
     }
 
@@ -1427,23 +1462,23 @@ public final class TuiApplication implements AutoCloseable {
     }
 
     private List<TargetJvm> visibleTargets() {
-        if (pickerFilter.isBlank()) return targets;
+        if (pickerFilter.trim().isEmpty()) return targets;
         String needle = pickerFilter.toLowerCase(Locale.ROOT);
         return targets.stream().filter(target -> (target.displayName() + " " + target.pid() + " " + target.user())
-                .toLowerCase(Locale.ROOT).contains(needle)).toList();
+                .toLowerCase(Locale.ROOT).contains(needle)).collect(Collectors.toList());
     }
 
     private List<DiagnosticCommand> filteredCommands() {
         Connection active = connection;
-        if (active == null) return List.of();
+        if (active == null) return Collections.emptyList();
         String needle = commandFilter.toLowerCase(Locale.ROOT);
         return active.commands().stream()
                 .filter(command -> !command.name().startsWith("JFR."))
-                .filter(command -> commandFilter.isBlank()
+                .filter(command -> commandFilter.trim().isEmpty()
                         || (command.name() + " " + command.description()).toLowerCase(Locale.ROOT).contains(needle))
                 .sorted(java.util.Comparator.comparing((DiagnosticCommand command) -> commandGroup(command))
                         .thenComparing(commandComparator()))
-                .toList();
+                .collect(Collectors.toList());
     }
 
     private List<CommandGroup> commandGroups() {
@@ -1452,8 +1487,9 @@ public final class TuiApplication implements AutoCloseable {
             grouped.computeIfAbsent(commandGroup(command), ignored -> new ArrayList<>()).add(command);
         }
         return grouped.entrySet().stream()
-                .map(entry -> new CommandGroup(entry.getKey(), entry.getValue().stream().sorted(commandComparator()).toList()))
-                .toList();
+                .map(entry -> new CommandGroup(entry.getKey(), entry.getValue().stream()
+                        .sorted(commandComparator()).collect(Collectors.toList())))
+                .collect(Collectors.toList());
     }
 
     private List<CommandTreeItem> commandTree() {
@@ -1507,11 +1543,11 @@ public final class TuiApplication implements AutoCloseable {
 
     private List<DiagnosticCommand> jfrCommands() {
         Connection active = connection;
-        if (active == null) return List.of();
-        List<String> order = List.of("JFR.check", "JFR.start", "JFR.dump", "JFR.stop");
+        if (active == null) return Collections.emptyList();
+        List<String> order = Arrays.asList("JFR.check", "JFR.start", "JFR.dump", "JFR.stop");
         return order.stream().map(name -> active.commands().stream()
                         .filter(command -> command.name().equals(name)).findFirst().orElse(null))
-                .filter(java.util.Objects::nonNull).toList();
+                .filter(java.util.Objects::nonNull).collect(Collectors.toList());
     }
 
     private static Style commandStyle(DiagnosticCommand command) {
@@ -1550,7 +1586,7 @@ public final class TuiApplication implements AutoCloseable {
     }
 
     private static List<String> wrap(String value, int width) {
-        if (value == null || value.isEmpty()) return List.of();
+        if (value == null || value.isEmpty()) return Collections.emptyList();
         List<String> lines = new ArrayList<>();
         String remaining = value;
         while (!remaining.isEmpty()) {
@@ -1570,16 +1606,16 @@ public final class TuiApplication implements AutoCloseable {
     }
 
     private List<Double> series(MetricKey key) {
-        return history.snapshot().stream().map(sample -> sample.value(key)).toList();
+        return history.snapshot().stream().map(sample -> sample.value(key)).collect(Collectors.toList());
     }
 
     private List<Double> seriesFor(List<MetricSnapshot> samples, MetricKey key) {
-        return samples.stream().map(sample -> sample.value(key)).toList();
+        return samples.stream().map(sample -> sample.value(key)).collect(Collectors.toList());
     }
 
     private List<Double> deltas(MetricKey key) {
         List<Double> source = series(key);
-        if (source.size() < 2) return List.of();
+        if (source.size() < 2) return Collections.emptyList();
         List<Double> result = new ArrayList<>(source.size() - 1);
         for (int index = 1; index < source.size(); index++) {
             double previous = source.get(index - 1);
@@ -1615,7 +1651,7 @@ public final class TuiApplication implements AutoCloseable {
 
     private List<CommandExecution> executionSnapshot() {
         synchronized (commandExecutions) {
-            return List.copyOf(commandExecutions);
+            return Collections.unmodifiableList(new ArrayList<>(commandExecutions));
         }
     }
 
@@ -1793,15 +1829,14 @@ public final class TuiApplication implements AutoCloseable {
                 if (value == '~') break;
                 if (sequence.length() > 8) break;
             }
-            return switch (sequence.toString()) {
-                case "1~" -> InputEvent.key(KEY_HOME);
-                case "4~" -> InputEvent.key(KEY_END);
-                case "5~" -> InputEvent.key(KEY_PAGE_UP);
-                case "6~" -> InputEvent.key(KEY_PAGE_DOWN);
-                case "11~" -> InputEvent.key(KEY_F1);
-                case "1;2Z" -> InputEvent.key(KEY_SHIFT_TAB);
-                default -> InputEvent.key(27);
-            };
+            String sequenceValue = sequence.toString();
+            if ("1~".equals(sequenceValue)) return InputEvent.key(KEY_HOME);
+            if ("4~".equals(sequenceValue)) return InputEvent.key(KEY_END);
+            if ("5~".equals(sequenceValue)) return InputEvent.key(KEY_PAGE_UP);
+            if ("6~".equals(sequenceValue)) return InputEvent.key(KEY_PAGE_DOWN);
+            if ("11~".equals(sequenceValue)) return InputEvent.key(KEY_F1);
+            if ("1;2Z".equals(sequenceValue)) return InputEvent.key(KEY_SHIFT_TAB);
+            return InputEvent.key(27);
         }
         return InputEvent.key(27);
     }
@@ -1833,40 +1868,41 @@ public final class TuiApplication implements AutoCloseable {
     }
 
     private static Key toKey(int value) {
-        return switch (value) {
-            case KEY_UP -> Key.UP;
-            case KEY_DOWN -> Key.DOWN;
-            case KEY_LEFT -> Key.LEFT;
-            case KEY_RIGHT -> Key.RIGHT;
-            case KEY_SHIFT_TAB -> Key.SHIFT_TAB;
-            case KEY_PAGE_UP -> Key.PAGE_UP;
-            case KEY_PAGE_DOWN -> Key.PAGE_DOWN;
-            case KEY_HOME -> Key.HOME;
-            case KEY_END -> Key.END;
-            case 27 -> Key.ESCAPE;
-            default -> Key.OTHER;
-        };
+        if (value == KEY_UP) return Key.UP;
+        if (value == KEY_DOWN) return Key.DOWN;
+        if (value == KEY_LEFT) return Key.LEFT;
+        if (value == KEY_RIGHT) return Key.RIGHT;
+        if (value == KEY_SHIFT_TAB) return Key.SHIFT_TAB;
+        if (value == KEY_PAGE_UP) return Key.PAGE_UP;
+        if (value == KEY_PAGE_DOWN) return Key.PAGE_DOWN;
+        if (value == KEY_HOME) return Key.HOME;
+        if (value == KEY_END) return Key.END;
+        if (value == 27) return Key.ESCAPE;
+        return Key.OTHER;
     }
 
     private static List<String> defaultArguments(DiagnosticCommand command, TargetJvm target) {
         String time = FILE_TIME.format(Instant.now());
-        return switch (command.name()) {
-            case "Thread.print" -> List.of("-l");
-            case "GC.heap_dump" -> List.of(Path.of(System.getProperty("java.io.tmpdir"),
+        if ("Thread.print".equals(command.name())) return Collections.singletonList("-l");
+        if ("GC.heap_dump".equals(command.name())) {
+            return Collections.singletonList(Paths.get(System.getProperty("java.io.tmpdir"),
                     "lazyjvm-heap-" + target.pid() + "-" + time + ".hprof").toString());
-            case "JFR.start" -> List.of("name=lazyjvm", "settings=profile", "duration=60s",
-                    "filename=" + Path.of(System.getProperty("java.io.tmpdir"), "lazyjvm-" + target.pid() + "-" + time + ".jfr"));
-            case "JFR.dump", "JFR.stop" -> List.of("name=lazyjvm");
-            default -> List.of();
-        };
+        }
+        if ("JFR.start".equals(command.name())) {
+            return Arrays.asList("name=lazyjvm", "settings=profile", "duration=60s",
+                    "filename=" + Paths.get(System.getProperty("java.io.tmpdir"),
+                    "lazyjvm-" + target.pid() + "-" + time + ".jfr"));
+        }
+        if ("JFR.dump".equals(command.name()) || "JFR.stop".equals(command.name())) {
+            return Collections.singletonList("name=lazyjvm");
+        }
+        return Collections.emptyList();
     }
 
     private static Duration timeout(DiagnosticCommand command) {
-        return switch (command.impact()) {
-            case LOW -> Duration.ofSeconds(15);
-            case MEDIUM -> Duration.ofSeconds(45);
-            case HIGH -> Duration.ofMinutes(5);
-        };
+        if (command.impact() == CommandImpact.LOW) return Duration.ofSeconds(15);
+        if (command.impact() == CommandImpact.MEDIUM) return Duration.ofSeconds(45);
+        return Duration.ofMinutes(5);
     }
 
     private static String attachRecovery(Exception exception) {
@@ -1886,21 +1922,17 @@ public final class TuiApplication implements AutoCloseable {
     }
 
     private String modeLabel() {
-        return switch (mode) {
-            case PICKER -> ui("选择 JVM", "SELECT");
-            case CONNECTING -> ui("连接中", "ATTACHING");
-            case MONITOR -> ui("实时", "LIVE");
-            case ERROR -> ui("错误", "ERROR");
-        };
+        if (mode == Mode.PICKER) return ui("选择 JVM", "SELECT");
+        if (mode == Mode.CONNECTING) return ui("连接中", "ATTACHING");
+        if (mode == Mode.MONITOR) return ui("实时", "LIVE");
+        return ui("错误", "ERROR");
     }
 
     private String displayQuality(MetricQuality quality) {
         if (uiLanguage.isEnglish()) return quality.name().toLowerCase(Locale.ROOT);
-        return switch (quality) {
-            case EXACT -> "精确";
-            case ESTIMATED -> "估算";
-            case UNAVAILABLE -> "不可用";
-        };
+        if (quality == MetricQuality.EXACT) return "精确";
+        if (quality == MetricQuality.ESTIMATED) return "估算";
+        return "不可用";
     }
 
     private String targetSummary() {
@@ -1923,9 +1955,6 @@ public final class TuiApplication implements AutoCloseable {
         if (event.contains("  Sample missed")) return event.replace("  Sample missed", "  采样失败");
         if (event.contains("  Report written · ")) return event.replace("  Report written · ", "  报告已写入 · ");
         if (event.contains("  Export failed · ")) return event.replace("  Export failed · ", "  导出失败 · ");
-        if (event.contains(" completed in ")) return event.replace(" completed in ", " 已完成，用时 ");
-        if (event.contains(" failed (exit ")) return event.replace(" failed (exit ", " 失败（退出码 ").replace(")", "）");
-        if (event.contains(" failed · ")) return event.replace(" failed · ", " 失败：");
         return event;
     }
 
@@ -1933,7 +1962,12 @@ public final class TuiApplication implements AutoCloseable {
         Throwable current = throwable;
         while (current.getCause() != null && current.getCause() != current) current = current.getCause();
         String message = current.getMessage();
-        return current.getClass().getSimpleName() + (message == null || message.isBlank() ? "" : ": " + message);
+        return current.getClass().getSimpleName() + (message == null || message.trim().isEmpty() ? "" : ": " + message);
+    }
+
+    private static boolean isTargetAlive(long pid) {
+        if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) return true;
+        return Files.exists(Paths.get("/proc", Long.toString(pid)));
     }
 
     private static int detectedSize(int terminalValue, String environmentName, int minimum) {
@@ -1950,7 +1984,7 @@ public final class TuiApplication implements AutoCloseable {
     private static void drawWrapped(Canvas canvas, int x, int y, int width, String text, Style style, int maxLines) {
         List<String> lines = wrap(text == null ? "" : text, width);
         for (int line = 0; line < maxLines && line < lines.size(); line++) {
-            canvas.text(x, y + line, lines.get(line).strip(), style);
+            canvas.text(x, y + line, lines.get(line).trim(), style);
         }
     }
 
@@ -1983,8 +2017,38 @@ public final class TuiApplication implements AutoCloseable {
     private static final int KEY_F1 = -1010;
 
     private enum Key { UP, DOWN, LEFT, RIGHT, SHIFT_TAB, PAGE_UP, PAGE_DOWN, HOME, END, ESCAPE, OTHER }
-    private record CommandGroup(String name, List<DiagnosticCommand> commands) {}
-    private record CommandTreeItem(String group, DiagnosticCommand command, boolean groupHeader, int groupSize) {
+
+    private static final class CommandGroup {
+        private final String name;
+        private final List<DiagnosticCommand> commands;
+
+        private CommandGroup(String name, List<DiagnosticCommand> commands) {
+            this.name = name;
+            this.commands = commands;
+        }
+
+        String name() { return name; }
+        List<DiagnosticCommand> commands() { return commands; }
+    }
+
+    private static final class CommandTreeItem {
+        private final String group;
+        private final DiagnosticCommand command;
+        private final boolean groupHeader;
+        private final int groupSize;
+
+        private CommandTreeItem(String group, DiagnosticCommand command, boolean groupHeader, int groupSize) {
+            this.group = group;
+            this.command = command;
+            this.groupHeader = groupHeader;
+            this.groupSize = groupSize;
+        }
+
+        String group() { return group; }
+        DiagnosticCommand command() { return command; }
+        boolean groupHeader() { return groupHeader; }
+        int groupSize() { return groupSize; }
+
         static CommandTreeItem header(String group, int size) {
             return new CommandTreeItem(group, null, true, size);
         }
@@ -1993,6 +2057,24 @@ public final class TuiApplication implements AutoCloseable {
             return new CommandTreeItem(group, command, false, 0);
         }
     }
-    private record Connection(TargetJvm target, JmxCollector collector, JcmdExecutor jcmd,
-                              List<DiagnosticCommand> commands) {}
+
+    private static final class Connection {
+        private final TargetJvm target;
+        private final JmxCollector collector;
+        private final JcmdExecutor jcmd;
+        private final List<DiagnosticCommand> commands;
+
+        private Connection(TargetJvm target, JmxCollector collector, JcmdExecutor jcmd,
+                           List<DiagnosticCommand> commands) {
+            this.target = target;
+            this.collector = collector;
+            this.jcmd = jcmd;
+            this.commands = commands;
+        }
+
+        TargetJvm target() { return target; }
+        JmxCollector collector() { return collector; }
+        JcmdExecutor jcmd() { return jcmd; }
+        List<DiagnosticCommand> commands() { return commands; }
+    }
 }

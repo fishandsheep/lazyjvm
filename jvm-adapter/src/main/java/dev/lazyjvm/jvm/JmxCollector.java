@@ -25,12 +25,14 @@ import java.lang.management.ThreadMXBean;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public final class JmxCollector implements Collector {
     private final LocalJmxSession session;
@@ -102,7 +104,8 @@ public final class JmxCollector implements Collector {
         List<MemoryPoolSnapshot> poolValues = pools.stream().filter(pool -> pool.getUsage() != null)
                 .map(pool -> new MemoryPoolSnapshot(
                         pool.getName(), pool.getType() == MemoryType.HEAP ? "heap" : "non-heap",
-                        pool.getUsage().getUsed(), pool.getUsage().getCommitted(), pool.getUsage().getMax())).toList();
+                        pool.getUsage().getUsed(), pool.getUsage().getCommitted(), pool.getUsage().getMax()))
+                .collect(Collectors.toList());
 
         long totalCount = 0;
         long totalTime = 0;
@@ -119,7 +122,7 @@ public final class JmxCollector implements Collector {
 
         ThreadSnapshot threadValues = threadSnapshot();
         return new MetricSnapshot(now, values, poolValues, gcValues, threadValues, capabilities,
-                Duration.ofNanos(System.nanoTime() - started), List.of());
+                Duration.ofNanos(System.nanoTime() - started), Collections.<String>emptyList());
     }
 
     private ThreadSnapshot threadSnapshot() throws Exception {
@@ -146,8 +149,6 @@ public final class JmxCollector implements Collector {
     }
 
     private double systemCpuLoad() {
-        double current = safeCpu(operatingSystem::getCpuLoad);
-        if (current >= 0) return current;
         return safeCpu(operatingSystem::getSystemCpuLoad);
     }
 

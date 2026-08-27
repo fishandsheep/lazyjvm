@@ -78,7 +78,7 @@ final class Canvas {
         text(x + w - 1, y, Character.toString(tr), border);
         text(x, y + h - 1, Character.toString(bl), border);
         text(x + w - 1, y + h - 1, Character.toString(br), border);
-        if (title != null && !title.isBlank() && w > 6) {
+        if (title != null && !title.trim().isEmpty() && w > 6) {
             text(x + 2, y, " " + crop(title, w - 6) + " ", Style.CYAN);
         }
     }
@@ -202,26 +202,39 @@ final class Canvas {
 
     private static String ascii(int codePoint) {
         if (codePoint <= 127) return Character.toString((char) codePoint);
-        return switch (codePoint) {
-            case '●' -> "*";
-            case '·' -> "|";
-            case '–', '—', '−' -> "-";
-            case '…' -> ".";
-            case '≥' -> ">";
-            case '≤' -> "<";
-            case '×' -> "x";
-            case '↑' -> "^";
-            case '↓' -> "v";
-            case '←' -> "<";
-            case '→' -> ">";
-            case '▼', '▾' -> "v";
-            case '•' -> "*";
-            case '╭', '╮', '╰', '╯', '┌', '┐', '└', '┘', '┼' -> "+";
-            case '─' -> "-";
-            case '│' -> "|";
-            case '█', '▄' -> "#";
-            case '░', '┈' -> ".";
-            default -> "?";
-        };
+        switch (codePoint) {
+            case '●': return "*";
+            case '·': return "|";
+            case '–':
+            case '—':
+            case '−': return "-";
+            case '…': return ".";
+            case '≥': return ">";
+            case '≤': return "<";
+            case '×': return "x";
+            case '↑': return "^";
+            case '↓': return "v";
+            case '←': return "<";
+            case '→': return ">";
+            case '▼':
+            case '▾': return "v";
+            case '•': return "*";
+            case '╭':
+            case '╮':
+            case '╰':
+            case '╯':
+            case '┌':
+            case '┐':
+            case '└':
+            case '┘':
+            case '┼': return "+";
+            case '─': return "-";
+            case '│': return "|";
+            case '█':
+            case '▄': return "#";
+            case '░':
+            case '┈': return ".";
+            default: return "?";
+        }
     }
 }

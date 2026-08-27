@@ -18,12 +18,11 @@ public enum UiLanguage {
     }
 
     public static UiLanguage parse(String value) {
-        if (value == null || value.isBlank()) return ZH_CN;
-        return switch (value.strip().toLowerCase(Locale.ROOT)) {
-            case "zh", "zh-cn", "zh_cn" -> ZH_CN;
-            case "en", "en-us", "english" -> EN;
-            default -> throw new IllegalArgumentException("language must be zh-CN or en");
-        };
+        if (value == null || value.trim().isEmpty()) return ZH_CN;
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if (normalized.equals("zh") || normalized.equals("zh-cn") || normalized.equals("zh_cn")) return ZH_CN;
+        if (normalized.equals("en") || normalized.equals("en-us") || normalized.equals("english")) return EN;
+        throw new IllegalArgumentException("language must be zh-CN or en");
     }
 
     UiLanguage forTerminal(boolean ascii) {

@@ -1,6 +1,5 @@
 package dev.lazyjvm.jvm;
 
-import com.sun.tools.attach.VirtualMachine;
 import dev.lazyjvm.domain.JdkIdentity;
 import dev.lazyjvm.domain.TargetJvm;
 
@@ -9,28 +8,29 @@ import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Properties;
 
 public final class LocalJmxSession implements AutoCloseable {
     private static final String CONNECTOR_ADDRESS = "com.sun.management.jmxremote.localConnectorAddress";
 
-    private final VirtualMachine virtualMachine;
+    private final AttachSupport.AttachedVirtualMachine virtualMachine;
     private final JMXConnector connector;
     private final TargetJvm target;
 
-    private LocalJmxSession(VirtualMachine virtualMachine, JMXConnector connector, TargetJvm target) {
+    private LocalJmxSession(AttachSupport.AttachedVirtualMachine virtualMachine, JMXConnector connector, TargetJvm target) {
         this.virtualMachine = virtualMachine;
         this.connector = connector;
         this.target = target;
     }
 
     public static LocalJmxSession attach(TargetJvm target) throws Exception {
-        VirtualMachine vm = VirtualMachine.attach(Long.toString(target.pid()));
+        AttachSupport.AttachedVirtualMachine vm = AttachSupport.attach(target.pid());
         try {
             Properties agentProperties = vm.getAgentProperties();
             String address = agentProperties.getProperty(CONNECTOR_ADDRESS);
-            if (address == null || address.isBlank()) address = vm.startLocalManagementAgent();
-            if (address == null || address.isBlank()) {
+            if (address == null || address.trim().isEmpty()) address = vm.startLocalManagementAgent();
+            if (address == null || address.trim().isEmpty()) {
                 throw new IllegalStateException("Target JVM did not publish a local JMX connector");
             }
             Properties system = vm.getSystemProperties();
@@ -75,7 +75,7 @@ public final class LocalJmxSession implements AutoCloseable {
 
     private static Path pathOrNull(String value) {
         try {
-            return value == null || value.isBlank() ? null : Path.of(value);
+            return value == null || value.trim().isEmpty() ? null : Paths.get(value);
         } catch (Exception ignored) {
             return null;
         }

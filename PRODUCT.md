@@ -8,7 +8,7 @@ adaptive
 
 ## Stack
 
-Java 21, Maven, JLine 4.3.1, jlink. LazyJVM ships with its own minimized Java 21 runtime for Linux and macOS and monitors local HotSpot-compatible JVMs running JDK 8 through 25.
+Full JDK 8+ runtime, Maven, JLine 3.28 for the regular executable JAR, and JLine 4.3.1 plus jlink for the optional Java 21 runtime image. LazyJVM monitors local HotSpot-compatible JVMs running JDK 8 through 25. CI verifies Linux, macOS, and Windows on JDK 8, 11, and 21.
 
 ## Users
 
@@ -28,7 +28,7 @@ LazyJVM runs as a separate local process under the same operating-system user an
 
 ## Capabilities and Constraints
 
-- Local Linux and macOS only for the first release; no remote JMX, SSH orchestration, Windows, core dump analysis, or full heap-dump analysis.
+- Local Linux, macOS, and Windows; no remote JMX, SSH orchestration, core dump analysis, or full heap-dump analysis.
 - Target JDK 8 through 25 with capability-based degradation; features are not assumed identical across versions or garbage collectors.
 - One-second lightweight sampling and a bounded 60-minute in-memory history by default.
 - Attach/JMX MXBeans are the primary live source. Target-matched `jcmd` supplies diagnostic commands. JFR is exposed only when the target reports support.

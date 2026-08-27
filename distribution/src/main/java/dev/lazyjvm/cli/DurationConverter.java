@@ -12,16 +12,15 @@ final class DurationConverter implements CommandLine.ITypeConverter<Duration> {
 
     @Override
     public Duration convert(String value) {
-        Matcher matcher = SIMPLE.matcher(value.strip().toLowerCase(Locale.ROOT));
+        Matcher matcher = SIMPLE.matcher(value.trim().toLowerCase(Locale.ROOT));
         if (!matcher.matches()) throw new CommandLine.TypeConversionException(
                 "duration must use ms, s, m, or h, for example 1s or 60m");
         long amount = Long.parseLong(matcher.group(1));
-        return switch (matcher.group(2)) {
-            case "ms" -> Duration.ofMillis(amount);
-            case "s" -> Duration.ofSeconds(amount);
-            case "m" -> Duration.ofMinutes(amount);
-            case "h" -> Duration.ofHours(amount);
-            default -> throw new CommandLine.TypeConversionException("unsupported duration unit");
-        };
+        String unit = matcher.group(2);
+        if ("ms".equals(unit)) return Duration.ofMillis(amount);
+        if ("s".equals(unit)) return Duration.ofSeconds(amount);
+        if ("m".equals(unit)) return Duration.ofMinutes(amount);
+        if ("h".equals(unit)) return Duration.ofHours(amount);
+        throw new CommandLine.TypeConversionException("unsupported duration unit");
     }
 }

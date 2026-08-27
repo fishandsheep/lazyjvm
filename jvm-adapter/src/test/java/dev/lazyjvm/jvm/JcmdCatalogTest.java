@@ -9,17 +9,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class JcmdCatalogTest {
     @Test
     void parsesOnlyCommandRowsAndClassifiesImpact() {
-        String output = """
-                1234:
-                The following commands are available:
-                Compiler.codecache
-                GC.heap_dump
-                GC.heap_info
-                Thread.print
-                help
-                """;
+        String output = "1234:\n"
+                + "The following commands are available:\n"
+                + "Compiler.codecache\n"
+                + "GC.heap_dump\n"
+                + "GC.heap_info\n"
+                + "Thread.print\n"
+                + "help\n";
 
-        var commands = new JcmdCatalog().parse(output);
+        java.util.List<dev.lazyjvm.domain.DiagnosticCommand> commands = new JcmdCatalog().parse(output);
         assertEquals(4, commands.size());
         assertTrue(commands.stream().anyMatch(command -> command.name().equals("GC.heap_dump")
                 && command.impact() == CommandImpact.HIGH));
@@ -28,15 +26,13 @@ class JcmdCatalogTest {
 
     @Test
     void toleratesLocalizedNoiseUnknownCommandsAndDuplicates() {
-        String output = """
-                进程 99：
-                VM.version
-                Future.experimental_command
-                VM.version
-                命令不可用
-                """;
+        String output = "进程 99：\n"
+                + "VM.version\n"
+                + "Future.experimental_command\n"
+                + "VM.version\n"
+                + "命令不可用\n";
 
-        var commands = new JcmdCatalog().parse(output);
+        java.util.List<dev.lazyjvm.domain.DiagnosticCommand> commands = new JcmdCatalog().parse(output);
         assertEquals(2, commands.size());
         assertTrue(commands.stream().anyMatch(command -> command.name().equals("Future.experimental_command")
                 && command.impact() == CommandImpact.LOW));

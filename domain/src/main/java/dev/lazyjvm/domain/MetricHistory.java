@@ -1,6 +1,7 @@
 package dev.lazyjvm.domain;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -32,7 +33,7 @@ public final class MetricHistory {
             List<MetricSnapshot> copy = new ArrayList<>(size);
             int start = (head - size + samples.length) % samples.length;
             for (int i = 0; i < size; i++) copy.add(samples[(start + i) % samples.length]);
-            return List.copyOf(copy);
+            return Collections.unmodifiableList(copy);
         } finally {
             lock.readLock().unlock();
         }

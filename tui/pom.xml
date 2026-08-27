@@ -22,7 +22,7 @@
     </dependency>
     <dependency>
       <groupId>org.jline</groupId>
-      <artifactId>jline-terminal</artifactId>
+      <artifactId>${jline.artifact}</artifactId>
       <version>${jline.version}</version>
     </dependency>
     <dependency>

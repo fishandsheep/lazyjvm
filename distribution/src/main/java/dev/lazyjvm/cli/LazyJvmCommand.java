@@ -23,6 +23,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -96,24 +98,25 @@ public final class LazyJvmCommand implements Callable<Integer> {
             MetricSnapshot sample = collector.sample();
             JcmdExecutor executor = new JcmdExecutor(jdkHome);
             String jcmdWarning = executor.compatibilityWarning(session.target());
-            if (!jcmdWarning.isBlank()) System.err.println("Warning: " + jcmdWarning);
+            if (!jcmdWarning.trim().isEmpty()) System.err.println("Warning: " + jcmdWarning);
             Map<String, CommandResult> commands = collectSafeCommands(session.target(), executor);
             SnapshotManifest manifest = new SnapshotManifest("0.1.0-SNAPSHOT", session.target(), Instant.now(),
-                    List.of("Attach API", "JMX MXBeans", "jcmd"), List.of(),
-                    List.of("Environment variables and system properties are not exported by default"));
-            Path written = new SnapshotExporter().export(output, manifest, List.of(sample), commands);
+                    Arrays.asList("Attach API", "JMX MXBeans", "jcmd"), Collections.<String>emptyList(),
+                    Collections.singletonList("Environment variables and system properties are not exported by default"));
+            Path written = new SnapshotExporter().export(output, manifest, Collections.singletonList(sample), commands);
             System.out.println(written);
             return 0;
         }
     }
 
     private static Map<String, CommandResult> collectSafeCommands(TargetJvm target, JcmdExecutor executor) {
-        if (!executor.available(target)) return Map.of();
+        if (!executor.available(target)) return Collections.emptyMap();
         Map<String, CommandResult> results = new LinkedHashMap<>();
-        for (String name : List.of("VM.version", "VM.flags", "GC.heap_info", "Thread.print")) {
+        for (String name : Arrays.asList("VM.version", "VM.flags", "GC.heap_info", "Thread.print")) {
             try {
-                DiagnosticCommand command = new DiagnosticCommand(name, "", CommandImpact.LOW, List.of());
-                List<String> arguments = name.equals("Thread.print") ? List.of("-l") : List.of();
+                DiagnosticCommand command = new DiagnosticCommand(name, "", CommandImpact.LOW, Collections.<String>emptyList());
+                List<String> arguments = name.equals("Thread.print")
+                        ? Collections.singletonList("-l") : Collections.<String>emptyList();
                 results.put(name, executor.execute(target,
                         new CommandRequest(target.pid(), command, arguments, Duration.ofSeconds(20))));
             } catch (Exception exception) {

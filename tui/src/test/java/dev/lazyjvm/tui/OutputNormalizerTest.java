@@ -3,6 +3,7 @@ package dev.lazyjvm.tui;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -18,7 +19,7 @@ class OutputNormalizerTest {
 
     @Test
     void wrapsByTerminalDisplayWidth() {
-        assertEquals(List.of("中 文", "abc"), OutputNormalizer.lines("中 文abc", 5));
+        assertEquals(Arrays.asList("中 文", "abc"), OutputNormalizer.lines("中 文abc", 5));
         assertFalse(OutputNormalizer.normalize("long line", 4).contains("\033"));
         assertTrue(Canvas.displayWidth("中文") == 4);
     }

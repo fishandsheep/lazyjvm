@@ -32,11 +32,12 @@ enum Style {
     }
 
     String ansi(ColorProfile profile) {
-        return switch (profile) {
-            case NONE -> "";
-            case ANSI16 -> ansi16;
-            case ANSI256 -> ansi256;
-            case TRUECOLOR -> trueColor;
-        };
+        switch (profile) {
+            case NONE: return "";
+            case ANSI16: return ansi16;
+            case ANSI256: return ansi256;
+            case TRUECOLOR: return trueColor;
+            default: throw new IllegalArgumentException("Unknown color profile: " + profile);
+        }
     }
 }

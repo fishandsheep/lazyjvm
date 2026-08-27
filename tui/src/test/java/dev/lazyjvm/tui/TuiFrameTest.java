@@ -2,6 +2,8 @@ package dev.lazyjvm.tui;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -23,7 +25,8 @@ class TuiFrameTest {
         assertFrame(frame, 80, 24);
         assertTrue(frame.contains("工作区"));
         assertTrue(frame.contains("进程 CPU"));
-        String top = frame.substring("\033[H".length()).lines().limit(2).reduce("", (a, b) -> a + b);
+        String top = Arrays.stream(frame.substring("\033[H".length()).split("\n", -1))
+                .limit(2).reduce("", (a, b) -> a + b);
         assertFalse(top.contains("1 Overview"));
         assertTrue(frame.contains("焦点"));
         assertFalse(frame.contains("Target detail"));

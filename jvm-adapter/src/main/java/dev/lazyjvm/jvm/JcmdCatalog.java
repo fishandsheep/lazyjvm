@@ -5,7 +5,9 @@ import dev.lazyjvm.domain.DiagnosticCommand;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 
 public final class JcmdCatalog {
@@ -14,17 +16,19 @@ public final class JcmdCatalog {
     public List<DiagnosticCommand> parse(String output) {
         List<DiagnosticCommand> commands = new ArrayList<>();
         for (String line : output.split("\\R")) {
-            String candidate = line.strip();
+            String candidate = line.trim();
             if (!COMMAND_NAME.matcher(candidate).matches() || candidate.equalsIgnoreCase("help")) continue;
-            commands.add(new DiagnosticCommand(candidate, description(candidate), impact(candidate), List.of()));
+            commands.add(new DiagnosticCommand(candidate, description(candidate), impact(candidate), java.util.Collections.<String>emptyList()));
         }
-        return commands.stream().distinct().sorted(Comparator.comparing(DiagnosticCommand::name)).toList();
+        return commands.stream().distinct().sorted(Comparator.comparing(DiagnosticCommand::name))
+                .collect(Collectors.toList());
     }
 
     public List<DiagnosticCommand> fallback() {
-        return List.of("VM.version", "VM.command_line", "VM.flags", "GC.heap_info", "Thread.print",
+        return Arrays.asList("VM.version", "VM.command_line", "VM.flags", "GC.heap_info", "Thread.print",
                         "GC.class_histogram", "JFR.check", "JFR.start", "JFR.dump", "JFR.stop", "GC.run", "GC.heap_dump")
-                .stream().map(name -> new DiagnosticCommand(name, description(name), impact(name), List.of())).toList();
+                .stream().map(name -> new DiagnosticCommand(name, description(name), impact(name),
+                        java.util.Collections.<String>emptyList())).collect(Collectors.toList());
     }
 
     public static CommandImpact impact(String name) {
@@ -37,20 +41,18 @@ public final class JcmdCatalog {
     }
 
     private static String description(String name) {
-        return switch (name) {
-            case "Thread.print" -> "Print thread stacks and lock information";
-            case "GC.heap_info" -> "Show current heap and collector summary";
-            case "GC.class_histogram" -> "Count live heap objects by class";
-            case "GC.heap_dump" -> "Write a potentially large HPROF heap dump";
-            case "GC.run" -> "Request a full garbage collection";
-            case "VM.flags" -> "Show active JVM flags";
-            case "VM.command_line" -> "Show the target launch command";
-            case "VM.version" -> "Show JVM version and build";
-            case "JFR.check" -> "List active Flight Recorder recordings";
-            case "JFR.start" -> "Start a Flight Recorder recording";
-            case "JFR.dump" -> "Write recording data to a JFR file";
-            case "JFR.stop" -> "Stop a Flight Recorder recording";
-            default -> "Diagnostic command reported by the target JVM";
-        };
+        if (name.equals("Thread.print")) return "Print thread stacks and lock information";
+        if (name.equals("GC.heap_info")) return "Show current heap and collector summary";
+        if (name.equals("GC.class_histogram")) return "Count live heap objects by class";
+        if (name.equals("GC.heap_dump")) return "Write a potentially large HPROF heap dump";
+        if (name.equals("GC.run")) return "Request a full garbage collection";
+        if (name.equals("VM.flags")) return "Show active JVM flags";
+        if (name.equals("VM.command_line")) return "Show the target launch command";
+        if (name.equals("VM.version")) return "Show JVM version and build";
+        if (name.equals("JFR.check")) return "List active Flight Recorder recordings";
+        if (name.equals("JFR.start")) return "Start a Flight Recorder recording";
+        if (name.equals("JFR.dump")) return "Write recording data to a JFR file";
+        if (name.equals("JFR.stop")) return "Stop a Flight Recorder recording";
+        return "Diagnostic command reported by the target JVM";
     }
 }

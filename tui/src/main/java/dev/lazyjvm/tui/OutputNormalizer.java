@@ -1,6 +1,7 @@
 package dev.lazyjvm.tui;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /** Makes hostile command output safe for the fixed-width TUI while export keeps raw output. */
@@ -50,7 +51,7 @@ final class OutputNormalizer {
             }
             result.add(remaining);
         }
-        return List.copyOf(result);
+        return Collections.unmodifiableList(result);
     }
 
     static String normalize(String raw, int width) {

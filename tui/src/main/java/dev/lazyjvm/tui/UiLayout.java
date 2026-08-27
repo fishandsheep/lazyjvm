@@ -10,7 +10,24 @@ final class UiLayout {
         OUTPUT_SELECTOR, OUTPUT_COPY, OUTPUT_ITEM
     }
 
-    record Rect(int x, int y, int width, int height) {
+    static final class Rect {
+        private final int x;
+        private final int y;
+        private final int width;
+        private final int height;
+
+        Rect(int x, int y, int width, int height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
+
+        int x() { return x; }
+        int y() { return y; }
+        int width() { return width; }
+        int height() { return height; }
+
         static Rect none() { return new Rect(-1, -1, 0, 0); }
 
         boolean contains(int column, int row) {
@@ -19,12 +36,40 @@ final class UiLayout {
         }
     }
 
-    record Hit(HitKind kind, int index) {}
+    static final class Hit {
+        private final HitKind kind;
+        private final int index;
 
-    record CommandHit(int index, String group, boolean groupHeader, Rect row) {
+        Hit(HitKind kind, int index) {
+            this.kind = kind;
+            this.index = index;
+        }
+
+        HitKind kind() { return kind; }
+        int index() { return index; }
+    }
+
+    static final class CommandHit {
+        private final int index;
+        private final String group;
+        private final boolean groupHeader;
+        private final Rect row;
+
+        CommandHit(int index, String group, boolean groupHeader, Rect row) {
+            this.index = index;
+            this.group = group;
+            this.groupHeader = groupHeader;
+            this.row = row;
+        }
+
         CommandHit(int index, Rect row) {
             this(index, "", false, row);
         }
+
+        int index() { return index; }
+        String group() { return group; }
+        boolean groupHeader() { return groupHeader; }
+        Rect row() { return row; }
     }
 
     private final Rect workspace;

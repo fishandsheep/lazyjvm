@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,7 +51,7 @@ public final class JcmdExecutor {
                 if (selected.startsWith(targetHome)) return "";
             }
             String targetVersion = identity == null ? "unknown" : identity.version();
-            return "jcmd fallback uses LazyJVM Java " + Runtime.version().feature()
+            return "jcmd fallback uses LazyJVM Java " + System.getProperty("java.version", "unknown")
                     + " for target Java " + targetVersion + "; pass --jdk-home for a target-matched tool";
         } catch (Exception exception) {
             return "jcmd unavailable: " + exception.getMessage();
@@ -94,7 +95,7 @@ public final class JcmdExecutor {
             Path parent = identity.home().getParent();
             if (parent != null) homes.add(parent);
         }
-        homes.add(Path.of(System.getProperty("java.home")));
+        homes.add(Paths.get(System.getProperty("java.home")));
         for (Path home : homes) {
             Path candidate = home.resolve("bin").resolve(isWindows() ? "jcmd.exe" : "jcmd");
             if (Files.isExecutable(candidate)) return candidate;
@@ -112,7 +113,7 @@ public final class JcmdExecutor {
             if (writable > 0) output.write(buffer, 0, writable);
             if (writable < read) truncated = true;
         }
-        String text = output.toString(StandardCharsets.UTF_8);
+        String text = new String(output.toByteArray(), StandardCharsets.UTF_8);
         if (truncated) text += "\n[LazyJVM truncated output at " + limit + " bytes]\n";
         return new ReadResult(text, truncated);
     }
@@ -121,5 +122,16 @@ public final class JcmdExecutor {
         return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
 
-    private record ReadResult(String output, boolean truncated) {}
+    private static final class ReadResult {
+        private final String output;
+        private final boolean truncated;
+
+        private ReadResult(String output, boolean truncated) {
+            this.output = output;
+            this.truncated = truncated;
+        }
+
+        String output() { return output; }
+        boolean truncated() { return truncated; }
+    }
 }

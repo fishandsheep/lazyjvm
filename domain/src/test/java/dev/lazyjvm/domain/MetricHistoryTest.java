@@ -6,6 +6,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -16,12 +19,13 @@ class MetricHistoryTest {
         for (int i = 0; i < 5; i++) {
             Instant time = Instant.ofEpochSecond(i);
             MetricPoint point = new MetricPoint(time, MetricKey.THREADS_LIVE, i, MetricQuality.EXACT, "test");
-            history.add(new MetricSnapshot(time, Map.of(MetricKey.THREADS_LIVE, point), List.of(), List.of(),
-                    null, CapabilitySet.of(), Duration.ZERO, List.of()));
+            history.add(new MetricSnapshot(time, Collections.singletonMap(MetricKey.THREADS_LIVE, point),
+                    Collections.<MemoryPoolSnapshot>emptyList(), Collections.<GcSnapshot>emptyList(),
+                    null, CapabilitySet.of(), Duration.ZERO, Collections.<String>emptyList()));
         }
 
         assertEquals(3, history.size());
-        assertEquals(List.of(2.0, 3.0, 4.0), history.snapshot().stream()
-                .map(sample -> sample.value(MetricKey.THREADS_LIVE)).toList());
+        assertEquals(Arrays.asList(2.0, 3.0, 4.0), history.snapshot().stream()
+                .map(sample -> sample.value(MetricKey.THREADS_LIVE)).collect(Collectors.toList()));
     }
 }

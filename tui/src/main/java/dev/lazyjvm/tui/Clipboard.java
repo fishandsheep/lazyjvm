@@ -2,6 +2,7 @@ package dev.lazyjvm.tui;
 
 import org.jline.terminal.Terminal;
 
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.concurrent.TimeUnit;
@@ -34,7 +35,7 @@ final class Clipboard {
                 if (candidate.equals("xclip")) process = new ProcessBuilder(candidate, "-selection", "clipboard").start();
                 else if (candidate.equals("xsel")) process = new ProcessBuilder(candidate, "--clipboard", "--input").start();
                 else process = new ProcessBuilder(candidate).start();
-                try (var output = process.getOutputStream()) {
+                try (OutputStream output = process.getOutputStream()) {
                     output.write((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
                 }
                 if (process.waitFor(2, TimeUnit.SECONDS) && process.exitValue() == 0) return true;

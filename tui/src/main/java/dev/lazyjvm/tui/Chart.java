@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
@@ -11,12 +12,21 @@ final class Chart {
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss")
             .withLocale(Locale.ROOT).withZone(ZoneId.systemDefault());
 
-    record Series(String label, List<Double> values, Style style) {
-        Series {
-            label = label == null ? "" : label;
-            values = values == null ? List.of() : List.copyOf(values);
-            style = style == null ? Style.CYAN : style;
+    static final class Series {
+        private final String label;
+        private final List<Double> values;
+        private final Style style;
+
+        Series(String label, List<Double> values, Style style) {
+            this.label = label == null ? "" : label;
+            this.values = values == null ? Collections.<Double>emptyList()
+                    : Collections.unmodifiableList(new ArrayList<Double>(values));
+            this.style = style == null ? Style.CYAN : style;
         }
+
+        String label() { return label; }
+        List<Double> values() { return values; }
+        Style style() { return style; }
     }
 
     private Chart() {}
@@ -104,12 +114,12 @@ final class Chart {
         else if (Math.abs(value) >= 1000) number = String.format(Locale.ROOT, "%.0f", value);
         else if (Math.abs(value) >= 10) number = String.format(Locale.ROOT, "%.0f", value);
         else number = String.format(Locale.ROOT, "%.1f", value);
-        return Canvas.crop(number + (unit == null || unit.isBlank() ? "" : " " + unit), 6);
+        return Canvas.crop(number + (unit == null || unit.trim().isEmpty() ? "" : " " + unit), 6);
     }
 
     static List<Double> bucket(List<Double> source, int width) {
-        if (source == null || source.isEmpty() || width <= 0) return List.of();
-        if (source.size() <= width) return List.copyOf(source);
+        if (source == null || source.isEmpty() || width <= 0) return Collections.emptyList();
+        if (source.size() <= width) return Collections.unmodifiableList(new ArrayList<Double>(source));
         List<Double> result = new ArrayList<>(width);
         for (int column = 0; column < width; column++) {
             int from = column * source.size() / width;

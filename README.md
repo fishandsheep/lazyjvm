@@ -16,10 +16,13 @@ LazyJVM 默认使用中文界面，也支持英文界面；技术名称（JVM、
 
 ## 环境要求
 
-- JDK 21 或更高版本。
+- 运行 LazyJVM：完整 JDK 8 或更高版本（JDK 8 需要 `tools.jar`）；已覆盖 JDK 8、11、21。
+- 构建 jlink runtime image：JDK 21 或更高版本（模块化运行时工具要求）。
 - Maven 3.9 或更高版本。
-- Linux 或 macOS。
+- Linux、macOS 或 Windows（CI 覆盖三平台）。
 - 目标 JVM：JDK 8–25 范围内的本地 HotSpot/OpenJDK 兼容 JVM，且运行用户和 PID namespace 与 LazyJVM 相同。
+
+每次 push 或 Pull Request 都会触发 GitHub Actions，在 Linux、macOS、Windows 上分别使用 JDK 8、11、21 编译并测试；JDK 21 任务还会构建 jlink runtime image。
 
 ## 快速开始
 
@@ -29,7 +32,8 @@ cd lazyjvm
 
 mvn test
 mvn verify
-mvn package -Pruntime-image
+mvn package
+mvn package -Pruntime-image  # 需要 JDK 21+
 ```
 
 运行可执行 JAR：
@@ -45,7 +49,8 @@ java -jar distribution/target/lazyjvm-0.1.0-SNAPSHOT-all.jar \
   12345 --snapshot report.zip
 ```
 
-`mvn package -Pruntime-image` 还会生成 `distribution/target/lazyjvm-runtime.zip`。
+普通可执行 JAR 使用 Java 8 字节码，可在完整 JDK 8/11/21 上启动。
+`mvn package -Pruntime-image` 还会生成 `distribution/target/lazyjvm-runtime.zip`，该步骤需要 JDK 21+。
 
 ## 启动参数
 
@@ -96,15 +101,16 @@ LazyJVM 只连接本机 JVM，不使用 shell，也不会自动调用 `sudo`。�
 
 ## English summary
 
-LazyJVM is a local JVM diagnostics TUI for Linux and macOS. It discovers attachable JVMs, samples JMX MXBeans, shows heap / GC / thread / JFR information, runs supported `jcmd` commands, and exports diagnostic ZIP bundles.
+LazyJVM is a local JVM diagnostics TUI for Linux, macOS, and Windows. It discovers attachable JVMs, samples JMX MXBeans, shows heap / GC / thread / JFR information, runs supported `jcmd` commands, and exports diagnostic ZIP bundles.
 
 The UI is Chinese by default. Use `--language en` or `--lang en` for English. `--ascii` selects ASCII glyphs and English copy; non-UTF-8 terminals use the same fallback. Commands can be run with `Enter` / `x` or by double-clicking a command row. `JFR.*` commands are kept on the JFR page, and high-impact actions require confirmation.
 
-Build with JDK 21+ and Maven 3.9+:
+Run the executable JAR with a full JDK 8 or newer (JDK 8 requires `tools.jar`). The build/test matrix covers JDK 8, 11, and 21 on Linux, macOS, and Windows. Maven 3.9+ is required. Building the jlink runtime image requires JDK 21+:
 
 ```bash
 mvn test
 mvn verify
+mvn package
 mvn package -Pruntime-image
 java -jar distribution/target/lazyjvm-0.1.0-SNAPSHOT-all.jar
 ```
