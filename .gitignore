@@ -1,0 +1,7 @@
+target/
+*.log
+*.hprof
+*.jfr
+lazyjvm-report-*.zip
+.idea/
+.impeccable/review/
